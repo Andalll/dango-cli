@@ -19,6 +19,7 @@ def ask_ai(prompt_text):
 
     headers = {
             "Authorization": f"Bearer {api_key}",
+            "Accept": "text/event-stream",
             "Content-Type": "application/json"
             }
     payload = {
@@ -30,24 +31,37 @@ def ask_ai(prompt_text):
                     }
                 ],
             "temperature": 0.6,
-            "max_tokens": 512
+            "max_tokens": 512,
+            "stream": True
             }
-    print("Mengirim pesan...")
+    print("\nAI ❯", end="", flush=True)
 
     try:
         response = requests.post(invoke_url, headers=headers, json=payload)
 
-        if response.status_code == 200:
-            result = response.json()
-            answer = result["choices"][0]["message"]["content"]
-            print("\n AI: ")
-            print(answer)
-        else:
+        if response.status_code != 200:
             print(f"\n[Error Server {response.status_code}]: {response.text}")
+            return
+        for line in response.iter_lines():
+            if line:
+              line_str = line.decode("utf-8")
+              if line_str.startswith("data: "): 
+                data_content = line_str[6:]
+                if data_content.strip() == "[DONE]":
+                  break 
+                try :
+                  json_data = json.loads(data_content)
+                  choices = json_data.get("choices", [])
+                  if choices and len(choices) > 0:
+                    delta = choices[0].get("delta", {})
+                    content = delta.get("content")
+                    if content:
+                      print(content, end="", flush=True)
+                except json.JSONDecodeError:
+                  pass
+        print()
     except Exception as e:
-        print(f"\n[Error Koneksi]: {e}")
+      print(f"\n[Error Koneksi]: {e}")
 
 if __name__ == "__main__":
-    ask_ai("Halo, sapa singkat di terminal saya.")
-
-
+  ask_ai("Jelaskan apa itu streaming data dalam 2 kalimat saja.")
