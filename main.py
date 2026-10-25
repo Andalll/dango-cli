@@ -63,5 +63,30 @@ def ask_ai(prompt_text):
     except Exception as e:
       print(f"\n[Error Koneksi]: {e}")
 
+def chat_loop():
+  print("=" * 50)
+  print("Dango: AI CLI")
+  print('Ketik "exit" atau tekan ctrl+c untuk keluar!')
+  print("=" * 50 + "\n")
+
+  while True:
+    try:
+      user_input = input("\nAnda ❯")
+
+      if user_input.strip().lower() in ["exit", "quit", "/exit"]:
+        print("Sampai jumpa!")
+        break 
+
+      if not user_input.strip(): 
+        continue 
+
+      ask_ai(user_input)
+
+    except KeyboardInterrupt:
+      print("\nProgram dihentikan.")
+      break
+      
+  
+
 if __name__ == "__main__":
-  ask_ai("Jelaskan apa itu streaming data dalam 2 kalimat saja.")
+  chat_loop()
