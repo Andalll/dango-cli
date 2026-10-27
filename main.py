@@ -8,70 +8,75 @@ from rich.markdown import Markdown
 from rich.live import Live
 
 console = Console()
+MODEL = "nvidia/nemotron-3.5-bolt-e4b" 
+MAX_TOKEN = 1024
+TEMPERATURE = 0.6
+TIMEOUT = (10, 120)
 
 def get_api_key():
     api_key = os.environ.get("NVIDIA_API_KEY")
     
     if not api_key:
         console.print("[bold red][ERROR][/bold red] NVIDIA_API_KEY belum diset di terminal")
-        console.print("""Silahkan set dengan cara jalankan: \n
-              [green]export NVIDIA_API_KEY=\"nvapi-***\"[green]""")
+        console.print('Silakan set dengan cara jalankan: \n[green]export NVIDIA_API_KEY=\"nvapi-***\"[green]')
         sys.exit(1)
     return api_key
 
-def ask_ai(prompt_text):
+def ask_ai(messages):
     api_key = get_api_key()
-
     invoke_url = "https://integrate.api.nvidia.com/v1/chat/completions"
-
     headers = {
             "Authorization": f"Bearer {api_key}",
             "Accept": "text/event-stream",
             "Content-Type": "application/json"
             }
     payload = {
-            "model": "nvidia/nemotron-3.5-bolt-e4b",
-            "messages": [
-                    {
-                        "role": "user",
-                        "content": prompt_text
-                    }
-                ],
-            "temperature": 0.6,
-            "max_tokens": 512,
+            "model": MODEL,
+            "messages": messages,
+            "temperature": TEMPERATURE,
+            "max_tokens": MAX_TOKEN,
             "stream": True
             }
+  
     console.print("[bold cyan]AI❯ [/bold cyan]")
-
+  
     try:
-        response = requests.post(invoke_url, headers=headers, json=payload)
-
+      with requests.post(invoke_url, headers=headers, json=payload, stream=True, timeout=TIMEOUT) as response:
         if response.status_code != 200:
-            console.print(f"[bold red][Error Server {response.status_code}][/bold red]: {response.text}")
-            return
-
+              console.print(f"[bold red][Error Server {response.status_code}][/bold red]: {response.text}")
+              return None
         full_text = ""
-        with Live(Markdown(""), console=console, refresh_per_second=10) as live: 
+        with console.status("[cyan]Menunggu response...", spinner="dots"): 
           for line in response.iter_lines():
-              if line:
-                line_str = line.decode("utf-8")
-                if line_str.startswith("data: "): 
-                  data_content = line_str[6:]
-                  if data_content.strip() == "[DONE]":
-                    break 
-                  try :
-                    json_data = json.loads(data_content)
-                    choices = json_data.get("choices", [])
-                    if choices and len(choices) > 0:
-                      delta = choices[0].get("delta", {})
-                      content = delta.get("content")
-                      if content:
-                        full_text += content
-                        live.update(Markdown(full_text))
-                  except json.JSONDecodeError:
-                    pass
-    except Exception as e:
+              if not line:
+                continue
+              line_str = line.decode("utf-8")
+              if not line_str.startswith("data: "):
+                continue
+              data_content = line_str[6:]
+              if data_content.strip() == "[DONE]":
+                break 
+              try:
+                json_data = json.loads(data_content)
+              except json.JSONDecodeError:
+                continue
+              choices = json_data.get("choices", [])
+              if choices and len(choices) > 0:
+                content = choices[0].get("delta", {}).get("content")
+                if content:
+                  full_text += content
+        if full_text:
+          console.print(Markdown(full_text))
+                  
+    except KeyboardInterrupt:
+      console.print("[dim]Respon dibatalkan![/dim]")
+      return None
+      
+    except request.RequestException as e:
       console.print(f"\n[bold red][Error Koneksi][/bold red]: {e}")
+      return None
+      
+    return full_text
 
 def chat_loop():
   console.print(
@@ -82,6 +87,7 @@ def chat_loop():
       border_style="cyan"
     )
   )
+  history = []
   
 
   while True:
@@ -95,8 +101,14 @@ def chat_loop():
       if not user_input.strip(): 
         continue 
 
-      ask_ai(user_input)
+      history.append({"role": "user", "content": user_input})
+      reply = ask_ai(history)
 
+      if reply:
+        history.append({"role": "assistant", "content": reply})
+      else:
+        history.pop()
+        
     except KeyboardInterrupt:
       console.print("\n[dim]Program dihentikan.[/dim]")
       break
